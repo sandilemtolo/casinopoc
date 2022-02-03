@@ -81,12 +81,14 @@ public class CasinoService {
 		Optional<Player> possible_player = null;
 		XPlayerDoesNotExist exception = null;
 
-		if (player.getPlayerId() != null) {
-			possible_player = player_dao.getPlayerById(player.getPlayerId());
-			exception = new XPlayerDoesNotExist(player.getPlayerId());
-		} else if (player.getUsername() != null) {
-			possible_player = player_dao.getPlayerByUsername(player.getUsername());
-			exception = new XPlayerDoesNotExist(player.getUsername());
+		synchronized (db_mutex) {
+			if (player.getPlayerId() != null) {
+				possible_player = player_dao.getPlayerById(player.getPlayerId());
+				exception = new XPlayerDoesNotExist(player.getPlayerId());
+			} else if (player.getUsername() != null) {
+				possible_player = player_dao.getPlayerByUsername(player.getUsername());
+				exception = new XPlayerDoesNotExist(player.getUsername());
+			}
 		}
 
 		if (possible_player != null &&
@@ -107,17 +109,19 @@ public class CasinoService {
 
 	public Player registerPlayer(Integer transactionid, Player player)
 	throws JsonMappingException, JsonProcessingException, XPlayerAlreadyExists {
-		if (!processedTransaction(transactionid)) {
-			if (!playerExists(player)) {
-				player = savePlayer(player);
+		synchronized (db_mutex) {
+			if (!processedTransaction(transactionid)) {
+				if (!playerExists(player)) {
+					player = savePlayer(player);
+				}
+				else {
+					throw new XPlayerAlreadyExists();
+				}
+				registerRegisterPlayerTransaction(transactionid, player);
+			} else {
+				Transaction transaction = transaction_dao.getById(transactionid);
+				player = player_dao.getById(transaction.getPlayerId());
 			}
-			else {
-				throw new XPlayerAlreadyExists();
-			}
-			registerRegisterPlayerTransaction(transactionid, player);
-		} else {
-			Transaction transaction = transaction_dao.getById(transactionid);
-			player = player_dao.getById(transaction.getPlayerId());
 		}
 		return player;
 	}
@@ -140,14 +144,18 @@ public class CasinoService {
 	}
 
 	private boolean processedTransaction(Integer transactionid) {
-		if (!transaction_dao.findById(transactionid).isPresent()) {
-			return false;
+		synchronized (db_mutex) {
+			if (!transaction_dao.findById(transactionid).isPresent()) {
+				return false;
+			}
+			throw new XTransactionAlreadyExists();
 		}
-		throw new XTransactionAlreadyExists();
 	}
 
 	private boolean playerExists(Player player) {
-		return player != null ? player_dao.getPlayerByUsername(player.getUsername()).isPresent() : false;
+		synchronized (db_mutex) {
+			return player != null ? player_dao.getPlayerByUsername(player.getUsername()).isPresent() : false;
+		}
 	}
 
 	public List<Transaction> getPlayersRecentTransactionsByType(RecentTransaction recent_transaction, TransactionTypeName transaction_type)
@@ -159,7 +167,9 @@ public class CasinoService {
 		player = getPlayer(player);
 
 		if (SUPER_UNSAFE_PASSWORD.equals(recent_transaction.getPassword())) {
-			return getPlayersRecentTransactionsByType(player, transaction_type, recent_transaction.getNumber());
+			synchronized (db_mutex) {
+				return getPlayersRecentTransactionsByType(player, transaction_type, recent_transaction.getNumber());
+			}
 		}
 		return new LinkedList<Transaction>();
 
@@ -168,7 +178,10 @@ public class CasinoService {
 	private List<Transaction> getPlayersRecentTransactionsByType(Player player, TransactionTypeName transaction_type, Integer number) {
 		/**For the record, I hate this! I'd rather use a Stored Proc to do this but H2 says no dice..boooo! */
 		List<Transaction> transactions = new LinkedList<>();
-		List<Transaction> all_transactions = transaction_dao.getPlayersLastXTransactionsByType(player.getPlayerId(), transaction_types_map.get(transaction_type.name()).getTransactionTypeId());
+		List<Transaction> all_transactions = null;
+		synchronized (db_mutex) {
+			all_transactions = transaction_dao.getPlayersLastXTransactionsByType(player.getPlayerId(), transaction_types_map.get(transaction_type.name()).getTransactionTypeId());
+		}
 
 		for (int i = 0; i < number; i++) {
 			if (!all_transactions.isEmpty()) {
@@ -184,47 +197,50 @@ public class CasinoService {
 
 	public Wager makeWager(Wager wager) throws XPlayerDoesNotExist {
 		wager.validate();
-		
-		if (!processedTransaction(wager.getTranactionId())) {
-			Player player = getPlayer(wager.getPlayerId());
-			Transaction transaction = new Transaction(wager.getTranactionId(), player, new Date(), transaction_types_map.get(TransactionType.TransactionTypeName.WAGER.name()));
-			transaction.setAmount(wager.getWager());
-			player.setBalance(player.getBalance() - transaction.getAmount());
+		synchronized (db_mutex) {
+			if (!processedTransaction(wager.getTranactionId())) {
+				Player player = getPlayer(wager.getPlayerId());
+				Transaction transaction = new Transaction(wager.getTranactionId(), player, new Date(), transaction_types_map.get(TransactionType.TransactionTypeName.WAGER.name()));
+				transaction.setAmount(wager.getWager());
+				player.setBalance(player.getBalance() - transaction.getAmount());
 
-			if (!player.hasFunds()) {
-				wager.setStatus(StatusCode.TEAPOT);
-			} else {
-				wager.setStatus(StatusCode.SUCCESS);
+				if (!player.hasFunds()) {
+					wager.setStatus(StatusCode.TEAPOT);
+				} else {
+					wager.setStatus(StatusCode.SUCCESS);
+				}
+
+				commit(player, transaction);
 			}
-
-			commit(player, transaction);
 		}
-
 		return wager;
 	}
 
 	public Win makeWin(Win win) throws XPlayerDoesNotExist {
 		win.validate();
-		
-		if (!processedTransaction(win.getTranactionId())) {
-			Player player = getPlayer(win.getPlayerId());
-			Transaction transaction = new Transaction(win.getTranactionId(), player, new Date(), transaction_types_map.get(TransactionType.TransactionTypeName.WIN.name()));
-			transaction.setAmount(win.getWin());
-			player.setBalance(player.getBalance() + transaction.getAmount());
+		synchronized (db_mutex) {
+			if (!processedTransaction(win.getTranactionId())) {
+				Player player = getPlayer(win.getPlayerId());
+				Transaction transaction = new Transaction(win.getTranactionId(), player, new Date(), transaction_types_map.get(TransactionType.TransactionTypeName.WIN.name()));
+				transaction.setAmount(win.getWin());
+				player.setBalance(player.getBalance() + transaction.getAmount());
 
-			win.setStatus(StatusCode.SUCCESS);
-			commit(player, transaction);
+				win.setStatus(StatusCode.SUCCESS);
+				commit(player, transaction);
+			}
 		}
 		return win;
 	}
 
 	private void commit(Player player, Transaction transaction) {
-		if (player != null) {
-			savePlayer(player);
-		}
-		
-		if (transaction != null) {
-			saveTransaction(transaction);
+		synchronized (db_mutex) {
+			if (player != null) {
+				savePlayer(player);
+			}
+			
+			if (transaction != null) {
+				saveTransaction(transaction);
+			}
 		}
 	}
 }
