@@ -1,6 +1,6 @@
 package com.dagacube.casinopoc.model;
 
-import com.dagacube.casinopoc.exception.XWinFieldMissing;
+import com.dagacube.casinopoc.exception.XRecentTransactionsFieldMissing;
 import com.dagacube.casinopoc.interfaces.IValidator;
 
 public class RecentTransaction implements IValidator {
@@ -39,9 +39,9 @@ public class RecentTransaction implements IValidator {
 	@Override
 	public void validate() {
 		if (password == null) {
-			throw new XWinFieldMissing("password");
+			throw new XRecentTransactionsFieldMissing("password");
 		} else if (username == null) {
-			throw new XWinFieldMissing("username");
+			throw new XRecentTransactionsFieldMissing("username");
 		}
 	}
 	

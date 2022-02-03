@@ -1,6 +1,6 @@
 package com.dagacube.casinopoc.model;
 
-import com.dagacube.casinopoc.exception.XWagerFieldMissing;
+import com.dagacube.casinopoc.exception.XWinFieldMissing;
 import com.dagacube.casinopoc.interfaces.IValidator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -55,11 +55,11 @@ public class Win implements IValidator {
 	@Override
 	public void validate() {
 		if (pid == null) {
-			throw new XWagerFieldMissing("pid");
+			throw new XWinFieldMissing("pid");
 		} else if (tid == null) {
-			throw new XWagerFieldMissing("tid");
+			throw new XWinFieldMissing("tid");
 		} else if (win == null) {
-			throw new XWagerFieldMissing("win");
+			throw new XWinFieldMissing("win");
 		}
 		
 	}

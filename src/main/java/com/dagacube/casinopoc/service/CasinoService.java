@@ -12,6 +12,7 @@ import com.dagacube.casinopoc.dao.TransactionDao;
 import com.dagacube.casinopoc.dao.TransactionTypeDao;
 import com.dagacube.casinopoc.exception.XPlayerAlreadyExists;
 import com.dagacube.casinopoc.exception.XPlayerDoesNotExist;
+import com.dagacube.casinopoc.exception.XTransactionAlreadyExists;
 import com.dagacube.casinopoc.interfaces.TransactionDateAscComparator;
 import com.dagacube.casinopoc.model.Balance;
 import com.dagacube.casinopoc.model.Player;
@@ -21,7 +22,6 @@ import com.dagacube.casinopoc.model.TransactionType;
 import com.dagacube.casinopoc.model.Wager;
 import com.dagacube.casinopoc.model.Win;
 import com.dagacube.casinopoc.model.TransactionType.TransactionTypeName;
-import com.dagacube.casinopoc.util.KeyID;
 import com.dagacube.casinopoc.util.StatusCode;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
@@ -39,8 +39,6 @@ public class CasinoService {
 
 	private HashMap<String, TransactionType> transaction_types_map = new HashMap<String, TransactionType>(); // TODO: Ideally, this should be static
 	private final static String SUPER_UNSAFE_PASSWORD = "swordfish";
-
-	private static List<String> potential_player_fields = new LinkedList<>();
 
 	@Autowired
 	public CasinoService(PlayerDao player_dao, TransactionDao transaciton_dao, TransactionTypeDao transaciton_type_dao) {
@@ -142,7 +140,10 @@ public class CasinoService {
 	}
 
 	private boolean processedTransaction(Integer transactionid) {
-		return transaction_dao.findById(transactionid).isPresent();
+		if (!transaction_dao.findById(transactionid).isPresent()) {
+			return false;
+		}
+		throw new XTransactionAlreadyExists();
 	}
 
 	private boolean playerExists(Player player) {
@@ -211,6 +212,7 @@ public class CasinoService {
 			transaction.setAmount(win.getWin());
 			player.setBalance(player.getBalance() + transaction.getAmount());
 
+			win.setStatus(StatusCode.SUCCESS);
 			commit(player, transaction);
 		}
 		return win;
@@ -224,11 +226,5 @@ public class CasinoService {
 		if (transaction != null) {
 			saveTransaction(transaction);
 		}
-	}
-	
-	static {
-
-		potential_player_fields.add(KeyID.PLAYER_ID);
-		potential_player_fields.add(KeyID.USERNAME);
 	}
 }
